@@ -10,20 +10,27 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
+import os
+import urllib.parse
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+ON_VERCEL = bool(os.environ.get("VERCEL"))
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-lc+8m_2!20q05vb5*na2+e!&pq!z1b8xe5@(d6erjp&&z_0w8-'
+SECRET_KEY = os.environ.get(
+    "DJANGO_SECRET_KEY",
+    'django-insecure-lc+8m_2!20q05vb5*na2+e!&pq!z1b8xe5@(d6erjp&&z_0w8-',
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get("DJANGO_DEBUG", "False" if ON_VERCEL else "True") == "True"
 
 ALLOWED_HOSTS = []
 
@@ -109,6 +116,22 @@ DATABASES = {
         "PORT": "5432",
     }
 }
+
+# On Vercel, "localhost" Postgres doesn't exist; use a hosted database via DATABASE_URL.
+if os.environ.get("DATABASE_URL"):
+    _db_url = urllib.parse.urlparse(os.environ["DATABASE_URL"])
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": _db_url.path.lstrip("/"),
+            "USER": urllib.parse.unquote(_db_url.username or ""),
+            "PASSWORD": urllib.parse.unquote(_db_url.password or ""),
+            "HOST": _db_url.hostname,
+            "PORT": _db_url.port or 5432,
+            "OPTIONS": {"sslmode": "require"},
+            "CONN_MAX_AGE": 60,
+        }
+    }
 # Password validation
 # https://docs.djangoproject.com/en/6.1/ref/settings/#auth-password-validators
 
@@ -185,7 +208,17 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:8000",
 ]
 
+# Allow Vercel deployment hosts (preview + production URLs and custom domains).
+ALLOWED_HOSTS += [".vercel.app"]
+CSRF_TRUSTED_ORIGINS += ["https://*.vercel.app"]
+for _env_name in ("VERCEL_URL", "VERCEL_BRANCH_URL", "VERCEL_PROJECT_PRODUCTION_URL"):
+    _host = os.environ.get(_env_name)
+    if _host:
+        ALLOWED_HOSTS.append(_host)
+        CSRF_TRUSTED_ORIGINS.append(f"https://{_host}")
+
 MEDIA_URL = "/media/"
-MEDIA_ROOT = r"C:\Users\stephen.ossai\Desktop\school_clock\attendance_project\media"
+# Vercel's filesystem is read-only except /tmp, so uploads there are temporary.
+MEDIA_ROOT = Path("/tmp/media") if ON_VERCEL else BASE_DIR / "media"
 # username ossai PASSWORD - ossaiossai
 # (venv) C:\Users\stephen.ossai\Desktop\school_clock\attendance_project>python manage.py runserver 10.170.4.234:8001
